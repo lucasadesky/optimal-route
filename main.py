@@ -12,6 +12,7 @@ import gpxpy.gpx
 from shapely.geometry import Polygon as SPoly
 
 from utils import assign_edge_colors
+from filters import filterForBike
 
 filename = "route"
 
@@ -88,9 +89,12 @@ completed_polygon = None
 recording = False
 
 # graph = ox.graph_from_place("Vernon, BC, Canada", simplify=False, network_type="bike")
-directed_graph = ox.graph_from_point((50.2690281, -119.2439416), 1400, simplify=True, network_type='bike')
+# waterloo: 43.4593402, -80.5284608
+
+directed_graph = ox.graph_from_point((43.4593402, -80.5284608), 600, simplify=True, network_type='bike')
 simplified_graph = ox.convert.to_undirected(directed_graph)
-# simplified_graph = ox.simplification.simplify_graph(graph)
+
+filtered_graph = filterForBike(simplified_graph, verbose=False)
 
 # Assign colors to edges
 edge_colors = assign_edge_colors(simplified_graph, EDGE_COLORS)
@@ -139,7 +143,6 @@ def complete_polygon():
     polygon_points = []
     polygon_line = None
     fig.canvas.draw_idle()
-
 
 # Define click handler function
 def on_click(event):
