@@ -14,6 +14,8 @@ from shapely.geometry import Polygon as SPoly
 from utils import assign_edge_colors
 from filters import filterForBike
 
+VERBOSE = True
+
 filename = "route"
 
 gpx = gpxpy.gpx.GPX()
@@ -68,8 +70,6 @@ def rotate_vector(vec, angle_degrees):
     ])
     return rotation_matrix @ vec
 
-
-
 ###########################
 
 
@@ -86,22 +86,26 @@ EDGE_LW = 3
 polygon_points = []
 polygon_line = None
 completed_polygon = None
+polygon_created = False
 recording = False
+starting_node_idx = 0
+starting_marker = None
+starting_node_id = None
 
 # graph = ox.graph_from_place("Vernon, BC, Canada", simplify=False, network_type="bike")
 # waterloo: 43.4593402, -80.5284608
 
-directed_graph = ox.graph_from_point((43.4593402, -80.5284608), 600, simplify=True, network_type='bike')
-simplified_graph = ox.convert.to_undirected(directed_graph)
+directed_graph = ox.graph_from_point((43.4593402, -80.5284608), 400, simplify=True, network_type='bike')
+unfiltered_graph = ox.convert.to_undirected(directed_graph)
 
-filtered_graph = filterForBike(simplified_graph, verbose=False)
+filtered_graph = filterForBike(unfiltered_graph, verbose=False)
 
 # Assign colors to edges
-edge_colors = assign_edge_colors(simplified_graph, EDGE_COLORS)
+edge_colors = assign_edge_colors(filtered_graph, EDGE_COLORS)
 
 # Plot the graph
 fig, ax = ox.plot_graph(
-    simplified_graph,
+    filtered_graph,
     node_color=NODE_COLOR,
     node_size=NODE_SIZE,
     edge_linewidth=EDGE_LW,
@@ -114,7 +118,7 @@ fig, ax = ox.plot_graph(
 
 # Define function to reset/complete polygon
 def complete_polygon():
-    global polygon_points, polygon_line, completed_polygon
+    global polygon_points, polygon_line, completed_polygon, polygon_created
     
     if len(polygon_points) >= 3:
         # Convert points to numpy array for matplotlib
@@ -128,6 +132,8 @@ def complete_polygon():
                         linewidth=2)
         
         completed_polygon = SPoly(poly_array)  # shapely polygon for using to collect roads
+
+        polygon_created = True
         
         # Add to plot
         ax.add_patch(poly)
@@ -146,9 +152,9 @@ def complete_polygon():
 
 # Define click handler function
 def on_click(event):
-    global polygon_points, polygon_line, recording
+    global polygon_points, polygon_line, recording, polygon_created
 
-    if not recording:
+    if not recording or polygon_created:
         return
     
     if event.xdata is not None and event.ydata is not None:
@@ -180,6 +186,63 @@ def on_click(event):
         # Update the display
         fig.canvas.draw_idle()
 
+#Define key handler function
+def on_key(event):
+
+    # print(event.key)
+        
+    global polygon_created, polygon_points, completed_polygon, starting_node_idx, starting_marker, starting_node_id
+        
+    if polygon_created:
+        print('key pressed')
+
+        # Retrieve the graph based on the completed polygon
+        temp_polygon_graph = ox.graph_from_polygon(completed_polygon, network_type='bike', simplify=True)
+        temp_polygon_graph = ox.convert.to_undirected(temp_polygon_graph)
+
+        tempG = filterForBike(temp_polygon_graph, False)
+
+        nodes_list = []
+
+        for node in tempG.nodes:
+            # print(node)
+            nodes_list.append(node)
+
+        # starting_node_idx = 0
+        len_list = len(nodes_list) -1
+
+        if event.key == ' ' or event.key == 'right':
+            if starting_node_idx + 1 < len_list:
+                starting_node_idx += 1
+            else:
+                starting_node_idx = 0
+        elif event.key == 'left':
+            if starting_node_idx -1 > 0:
+                starting_node_idx -= 1
+            else:
+                starting_node_idx = len_list
+
+        
+        print(tempG.nodes[nodes_list[starting_node_idx]])
+
+        # Before drawing a new marker, remove the previous one
+        if starting_marker is not None:
+            starting_marker.remove()
+
+        # Draw the new marker and store the reference
+        starting_marker = ax.plot(
+            tempG.nodes[nodes_list[starting_node_idx]]['x'],
+            tempG.nodes[nodes_list[starting_node_idx]]['y'],
+            'go', markersize=10
+            )[0]
+        starting_node_id = nodes_list[starting_node_idx]
+        # ax.plot(tempG.nodes[nodes_list[starting_node_idx]]['x'], tempG.nodes[nodes_list[starting_node_idx]]['y'], 'go', markersize=10)
+    
+        # Update the display
+        fig.canvas.draw_idle()
+    else:
+        return
+
 # Add text for instructions
 plt.figtext(0.5, 0.01, "Left-click to add points, Right-click to complete polygon", 
            ha="center", fontsize=10, bbox={"facecolor":"white", "alpha":0.7, "pad":5})
@@ -190,6 +253,7 @@ ax.add_patch(arrow)
 
 # Connect the click event to the figure
 fig.canvas.mpl_connect('button_press_event', on_click)
+fig.canvas.mpl_connect('key_press_event', on_key)
 
 # Add a button to toggle polygon recording
 record_button_ax = plt.axes([0.8, 0.01, 0.15, 0.05])
@@ -209,19 +273,20 @@ def save_polygon(event):
     osmnx_polygon_graph = ox.graph_from_polygon(completed_polygon, network_type='bike', simplify=True)
     osmnx_polygon_graph = ox.convert.to_undirected(osmnx_polygon_graph)
 
-    polygon_unsimplified = ox.graph_from_polygon(completed_polygon, network_type='bike', simplify=False)
-    polygon_unsimplified = ox.convert.to_undirected(polygon_unsimplified)
+    osmnx_polygon_graph_filtered = filterForBike(osmnx_polygon_graph, False)
     
-    print(f'Number of roads selected: {len(osmnx_polygon_graph.edges)}')  # Number of edges (roads) in the graph
-    for u, v, data in osmnx_polygon_graph.edges(data=True):  # Iterate over edges with data
+    print(f'Number of roads selected: {len(osmnx_polygon_graph_filtered.edges)}')  # Number of edges (roads) in the graph
+    for u, v, data in osmnx_polygon_graph_filtered.edges(data=True):  # Iterate over edges with data
         road_name = data.get('name', 'No name available')  # Get road name (if available)
-        print(f"  Road name: {road_name}")
+        if VERBOSE: print(f"  Road name: {road_name}")
 
-    find_route(osmnx_polygon_graph, polygon_unsimplified)
+    find_route(osmnx_polygon_graph_filtered)
 
     
 
-def find_route(osmnx_selected_graph, unsimplified):
+def find_route(osmnx_selected_graph):
+    global starting_node_id
+    
     dead_end_nodes = []
 
     # get the odd nodes
@@ -305,26 +370,39 @@ def find_route(osmnx_selected_graph, unsimplified):
 
     nodes_list = []
 
-    circuit = list(nx.eulerian_circuit(osmnx_selected_graph))
+    # HERE \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
+    starting_node = starting_node_id
+
+    circuit = list(nx.eulerian_circuit(osmnx_selected_graph, source=starting_node))
     print(f'Segments in loop: {len(circuit)}')
 
-
+    #  loop through the circuit and get the latlon data to add to the gpx file
     for edge in circuit:
-
+        # get the edge from the graph
         edge_data = osmnx_selected_graph.get_edge_data(edge[0], edge[1])
 
-        if edge_data == None:
-            continue
-        print(f'\nedgedata: {edge_data}')
+        # some roads with fine detail are travelled backwards so need their points reversed
+        backwards = False
+        if edge_data[0]['from'] != edge[0]:
+            backwards = True
+        
+        # store the points for curved roads so they arent just straight lines
         points = []
 
-        if 'geometry' in edge_data:
-            line = edge_data['geometry']
-            points = list(line.coords)
-        else:
-            points = [(unsimplified.nodes[edge[0]]['x'], unsimplified.nodes[edge[0]]['y']), (unsimplified.nodes[edge[1]]['x'], unsimplified.nodes[edge[1]]['y'])]
+        # if there's road curvature get it from the edge data
+        if 'geometry' in edge_data[0]:
+            line = edge_data[0]['geometry']
 
-        print(f'Edge: {edge} | Points: {points}')
+            # cast to list and reverse if traveresed backwards
+            points = list(line.coords)
+            if backwards:
+                points = points[::-1]
+
+        # if road data not found just use linear approx from start and end points
+        else:
+            points = [(osmnx_selected_graph.nodes[edge[0]]['x'], osmnx_selected_graph.nodes[edge[0]]['y']), (osmnx_selected_graph.nodes[edge[1]]['x'], osmnx_selected_graph.nodes[edge[1]]['y'])]
+
+        if VERBOSE: print(f'Edge: {edge} | Points: {points}')
         for point in points:
             gpx_segment.points.append(gpxpy.gpx.GPXTrackPoint(point[1], point[0]))
 
@@ -339,10 +417,9 @@ def find_route(osmnx_selected_graph, unsimplified):
 
     print(f"Written to {filename}.gpx")
 
-    # print(nodes_list)
 
-    # not drawing for nowz
-    draw_route(nodes_list, directed_graph, ax)
+    # not drawing for now
+    # draw_route(nodes_list, directed_graph, ax)
 
 
     
@@ -359,7 +436,7 @@ def compute_distances_graph(odd_nodes, osmnx_selected_graph):
             except nx.NetworkXNoPath:
                 pass  # or handle if nodes are disconnected 
 
-    print(nx.to_dict_of_dicts(NX_Weighted_Connectivity_Graph))
+    # print(nx.to_dict_of_dicts(NX_Weighted_Connectivity_Graph))
     return NX_Weighted_Connectivity_Graph
 
 
@@ -494,8 +571,6 @@ def draw_route(nodes_list, directed_graph, ax=None):
             ax.add_patch(arrow)
 
     plt.show()
-
-
 
 
 record_button.on_clicked(toggle_recording)

@@ -52,6 +52,8 @@ def filterForBike(graph:MultiGraph, verbose):
         
     for node in to_remove_nodes:
         graph.remove_node(node)
+
+    return graph
  
 
 
