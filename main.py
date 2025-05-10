@@ -1,6 +1,5 @@
 import osmnx as ox
 import matplotlib.pyplot as plt
-import dataframe_image as dfi
 import numpy as np
 from matplotlib.patches import Polygon, FancyArrowPatch
 from matplotlib.widgets import Button
@@ -14,9 +13,10 @@ from shapely.geometry import Polygon as SPoly
 from utils import assign_edge_colors
 from filters import filterForBike
 
-VERBOSE = True
+VERBOSE = False
 
 filename = "route"
+# filename = input("filename: ")
 
 gpx = gpxpy.gpx.GPX()
 
@@ -94,8 +94,9 @@ starting_node_id = None
 
 # graph = ox.graph_from_place("Vernon, BC, Canada", simplify=False, network_type="bike")
 # waterloo: 43.4593402, -80.5284608
+# 43.4487937, -80.4741173
 
-directed_graph = ox.graph_from_point((43.4593402, -80.5284608), 400, simplify=True, network_type='bike')
+directed_graph = ox.graph_from_point((43.4487937, -80.4741173), 800, simplify=True, network_type='bike')
 unfiltered_graph = ox.convert.to_undirected(directed_graph)
 
 filtered_graph = filterForBike(unfiltered_graph, verbose=False)
@@ -139,9 +140,9 @@ def complete_polygon():
         ax.add_patch(poly)
         
         # Print polygon coordinates
-        print("\nPolygon completed with the following coordinates:")
+        if VERBOSE: print("\nPolygon completed with the following coordinates:")
         for i, (x, y) in enumerate(polygon_points):
-            print(f"  Point {i+1}: Longitude: {x:.6f}, Latitude: {y:.6f}")
+            if VERBOSE: print(f"  Point {i+1}: Longitude: {x:.6f}, Latitude: {y:.6f}")
     
     # Reset for next polygon
     if polygon_line:
@@ -159,7 +160,7 @@ def on_click(event):
     
     if event.xdata is not None and event.ydata is not None:
         # Print the coordinates
-        print(f"Clicked coordinates: Longitude: {event.xdata:.6f}, Latitude: {event.ydata:.6f}")
+        if VERBOSE: print(f"Clicked coordinates: Longitude: {event.xdata:.6f}, Latitude: {event.ydata:.6f}")
         
         # Check if we're completing a polygon (right-click)
         if event.button == 3:  # Right mouse button
@@ -194,7 +195,7 @@ def on_key(event):
     global polygon_created, polygon_points, completed_polygon, starting_node_idx, starting_marker, starting_node_id
         
     if polygon_created:
-        print('key pressed')
+        if VERBOSE: print('key pressed')
 
         # Retrieve the graph based on the completed polygon
         temp_polygon_graph = ox.graph_from_polygon(completed_polygon, network_type='bike', simplify=True)
@@ -223,7 +224,7 @@ def on_key(event):
                 starting_node_idx = len_list
 
         
-        print(tempG.nodes[nodes_list[starting_node_idx]])
+        if VERBOSE: print(tempG.nodes[nodes_list[starting_node_idx]])
 
         # Before drawing a new marker, remove the previous one
         if starting_marker is not None:
@@ -286,7 +287,7 @@ def save_polygon(event):
 
 def find_route(osmnx_selected_graph):
     global starting_node_id
-    
+
     dead_end_nodes = []
 
     # get the odd nodes
@@ -295,8 +296,9 @@ def find_route(osmnx_selected_graph):
         if degree == 1:
             dead_end_nodes.append(node_id)
 
-    print(f'Dead end nodes: {len(dead_end_nodes)}')
-    print(f'Total nodes: {len(osmnx_selected_graph.nodes)}')
+    if VERBOSE:
+        print(f'Dead end nodes: {len(dead_end_nodes)}')
+        print(f'Total nodes: {len(osmnx_selected_graph.nodes)}')
 
     dead_end_pairs = []
 
@@ -304,10 +306,10 @@ def find_route(osmnx_selected_graph):
     for node in dead_end_nodes:
         dead_end_pairs.append( (node, list(osmnx_selected_graph.neighbors(node))[0]) )
 
-    print(dead_end_pairs)
+    if VERBOSE: print(dead_end_pairs)
 
     for node1, node2 in dead_end_pairs:
-        print(f"Matched {node1} with {node2}")
+        if VERBOSE: print(f"Matched {node1} with {node2}")
         path = nx.shortest_path(osmnx_selected_graph, node1, node2, weight='length')
         for u, v in zip(path[:-1], path[1:]):
             # Grab existing edges between u and v
@@ -333,7 +335,7 @@ def find_route(osmnx_selected_graph):
         if degree % 2 != 0:
             odd_degree_nodes.append(node_id)
 
-    print(f'odd degree nodes: {odd_degree_nodes}')
+    if VERBOSE: print(f'odd degree nodes: {odd_degree_nodes}')
 
     odd_degree_pairs = []
 
@@ -345,7 +347,7 @@ def find_route(osmnx_selected_graph):
 
     # add the new pairs to the graph
     for node1, node2 in odd_degree_pairs:
-        print(f"Matched {node1} with {node2}")
+        if VERBOSE: print(f"Matched {node1} with {node2}")
         path = nx.shortest_path(osmnx_selected_graph, node1, node2, weight='length')
         for u, v in zip(path[:-1], path[1:]):
             # Grab existing edges between u and v
@@ -362,11 +364,11 @@ def find_route(osmnx_selected_graph):
 
             osmnx_selected_graph.add_edge(u, v)
 
-    print(f'{"is connected" if nx.is_connected(osmnx_selected_graph) else "is not connected"}')
+    if VERBOSE: print(f'{"is connected" if nx.is_connected(osmnx_selected_graph) else "is not connected"}')
 
     # Check that all nodes have even degree
     for node in osmnx_selected_graph.nodes():
-        print(f"Node {node} has degree {osmnx_selected_graph.degree(node)}")
+        if VERBOSE: print(f"Node {node} has degree {osmnx_selected_graph.degree(node)}")
 
     nodes_list = []
 
@@ -374,7 +376,7 @@ def find_route(osmnx_selected_graph):
     starting_node = starting_node_id
 
     circuit = list(nx.eulerian_circuit(osmnx_selected_graph, source=starting_node))
-    print(f'Segments in loop: {len(circuit)}')
+    if VERBOSE: print(f'Segments in loop: {len(circuit)}')
 
     #  loop through the circuit and get the latlon data to add to the gpx file
     for edge in circuit:
